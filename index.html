@@ -1,0 +1,97 @@
+<div class="ks-root">
+  <header class="ks-topbar">
+    <div class="ks-logo">
+      <div class="ks-logo-mark"><i class="fa-solid fa-microphone-lines"></i></div>
+      <div><strong>BookOasis</strong><b>KARAOKE</b></div>
+    </div>
+    <div class="ks-top-search"><i class="fa-solid fa-magnifying-glass"></i><input id="ks-search" type="search" placeholder="곡명, 가수, 번호로 검색하세요..." autocomplete="off"><button id="ks-search-btn" type="button">검색</button></div>
+    <div class="ks-top-actions"><button type="button" class="ks-top-btn" id="ks-player-mode"><i class="fa-solid fa-expand"></i> TV 모드</button></div>
+  </header>
+
+  <div class="ks-shell">
+    <aside class="ks-nav">
+      <button type="button" class="ks-nav-item is-active" data-nav="home"><i class="fa-solid fa-house"></i><span>홈</span></button>
+      <button type="button" class="ks-nav-item" data-nav="search"><i class="fa-solid fa-magnifying-glass"></i><span>노래 검색</span></button>
+      <button type="button" class="ks-nav-item" data-nav="queue"><i class="fa-solid fa-list-ol"></i><span>예약 대기열</span><em id="ks-queue-badge">0</em></button>
+      <button type="button" class="ks-nav-item" data-nav="current"><i class="fa-solid fa-play"></i><span>현재 재생</span></button>
+      <button type="button" class="ks-nav-item" data-nav="favorites"><i class="fa-solid fa-star"></i><span>즐겨찾기</span></button>
+      <button type="button" class="ks-nav-item" data-nav="popular"><i class="fa-solid fa-fire"></i><span>인기차트</span></button>
+      <button type="button" class="ks-nav-item" data-nav="tjchart"><i class="fa-solid fa-ranking-star"></i><span>TJ 공식차트</span></button>
+      <button type="button" class="ks-nav-item" data-nav="kychart"><i class="fa-solid fa-ranking-star"></i><span>금영 공식차트</span></button>
+      <button type="button" class="ks-nav-item" data-nav="history"><i class="fa-solid fa-clock-rotate-left"></i><span>재생 기록</span></button>
+      <div class="ks-nav-spacer"></div>
+      <div class="ks-nav-brand">🎤<br><b>BOOKOASIS</b><small>KARAOKE</small></div>
+    </aside>
+
+    <main class="ks-main">
+      <section class="ks-welcome">
+        <div><span>BOOKOASIS KARAOKE</span><h1>오늘은 어떤 노래를 <strong>불러볼까요?</strong> 🎤</h1><p>TJ · 금영 <b id="ks-count-main">0</b>곡 · 예약자별 Fair Rotation</p></div>
+        <div class="ks-welcome-note"><i class="fa-solid fa-music"></i><span>검색 → 예약 → 순번 → 재생 → 다음곡</span></div>
+      </section>
+
+      <section class="ks-filters">
+        <div class="ks-brand-tabs">
+          <button type="button" class="ks-cat is-active" data-brand="all">전체</button><button type="button" class="ks-cat" data-brand="tj"><span class="ks-brand-dot tj">TJ</span> TJ</button><button type="button" class="ks-cat" data-brand="kumyoung"><span class="ks-brand-dot ky">KY</span> 금영</button>
+        </div>
+        <div class="ks-letter-tabs" id="ks-cats"><button type="button" class="ks-letter is-active" data-category="all">전체</button><button type="button" class="ks-letter" data-category="korean">가나다</button><button type="button" class="ks-letter" data-category="latin">ABC</button><button type="button" class="ks-letter" data-category="digit">번호</button></div>
+        <div class="ks-requester"><i class="fa-solid fa-user"></i><input id="ks-requester" type="text" placeholder="예약자 이름" maxlength="100"><button id="ks-save-requester" type="button">저장</button></div>
+      </section>
+      <div id="ks-subtags" class="ks-subtags" hidden></div>
+      <div class="ks-meta-line"><span id="ks-counts"></span><span id="ks-page-info"></span><span id="ks-status"></span></div>
+      <div id="ks-error" class="ks-banner ks-banner-error" hidden></div>
+
+      <section class="ks-content-grid">
+        <div class="ks-library">
+          <div class="ks-list-head"><div><strong id="ks-list-title"><i class="fa-solid fa-music"></i> 노래 목록</strong><span id="ks-list-sub">예약 버튼을 누르면 대기열에 등록됩니다.</span></div><div class="ks-admin-tools"><button type="button" id="ks-back-catalog" hidden><i class="fa-solid fa-arrow-left"></i> 전체 목록으로</button><button type="button" id="ks-tjchart-top" class="ks-chart-toggle" hidden>TOP100</button><button type="button" id="ks-tjchart-hot" class="ks-chart-toggle" hidden>HOT100</button><button type="button" id="ks-kychart-d" class="ks-chart-toggle" hidden>일간</button><button type="button" id="ks-kychart-w" class="ks-chart-toggle" hidden>주간</button><button type="button" id="ks-kychart-m" class="ks-chart-toggle" hidden>월간</button><button type="button" id="ks-kychart-y" class="ks-chart-toggle" hidden>연간</button><label class="ks-full-sync-toggle" title="켜면 기존 번호만 연속으로 나와도 건너뛰지 않고 모든 번호대를 끝까지 훑습니다(느림, 중간 누락곡 확인용)"><input type="checkbox" id="ks-sync-full"> 전체 동기화</label><button type="button" id="ks-sync-tj">TJ 동기화</button><button type="button" id="ks-sync-ky">금영 동기화</button><button type="button" id="ks-sync-stop">중지</button><button type="button" id="ks-add-song" title="TJ/금영 카탈로그에 없는 곡을 직접 추가">곡 추가</button><button type="button" id="ks-export-seed" title="현재 곡 목록을 플러그인 폴더의 songs_seed.json으로 저장 - 이 파일과 함께 재배포하면 새 사용자는 동기화 없이 바로 전체 목록을 씁니다">시드 내보내기</button></div></div>
+          <div id="ks-list" class="ks-list"></div>
+          <div id="ks-empty" class="ks-empty" hidden><i class="fa-solid fa-music"></i><b>검색 결과가 없습니다.</b><span>검색어 또는 브랜드 조건을 바꿔보세요.</span></div>
+          <nav class="ks-pagination" id="ks-pagination" aria-label="곡 목록 페이지"></nav>
+        </div>
+
+        <aside class="ks-right">
+          <section class="ks-now-card" id="ks-now-card">
+            <div class="ks-panel-title"><strong><i class="fa-solid fa-music"></i> 현재 재생 중</strong><button id="ks-now-tv" type="button" title="TV 모드"><i class="fa-solid fa-expand"></i></button></div>
+            <div class="ks-now-media" id="ks-now-media">
+              <div class="ks-now-thumb" id="ks-now-thumb"><div><i class="fa-solid fa-play"></i></div></div>
+              <div id="ks-yt-wrap" class="ks-yt-wrap"><div id="ks-yt-player"></div><audio id="ks-local-audio" controls preload="auto" hidden></audio><video id="ks-local-video" controls playsinline preload="auto" hidden></video></div>
+            </div>
+            <div class="ks-now-info"><strong id="ks-now-title">재생 중인 곡 없음</strong><span id="ks-now-meta">예약곡을 추가하면 자동으로 재생됩니다.</span><div class="ks-now-progress" id="ks-now-progress-wrap"><span id="ks-progress"></span></div><div class="ks-now-seekrow"><button type="button" id="ks-seek-back" title="10초 뒤로"><i class="fa-solid fa-backward"></i> 10초</button><small id="ks-now-time">00:00 / 00:00</small><button type="button" id="ks-seek-fwd" title="10초 앞으로">10초 <i class="fa-solid fa-forward"></i></button></div><div class="ks-speed-row" id="ks-speed-row"><span>속도</span><button type="button" class="ks-speed-btn" data-speed="0.75">0.75x</button><button type="button" class="ks-speed-btn" data-speed="0.9">0.9x</button><button type="button" class="ks-speed-btn is-active" data-speed="1">1x</button><button type="button" class="ks-speed-btn" data-speed="1.1">1.1x</button><button type="button" class="ks-speed-btn" data-speed="1.25">1.25x</button></div></div>
+            <div class="ks-now-actions"><button id="ks-player-pause" type="button"><i class="fa-solid fa-pause"></i> 일시정지</button><button id="ks-player-resume" type="button" hidden><i class="fa-solid fa-play"></i> 재생</button><button id="ks-player-next" type="button"><i class="fa-solid fa-forward-step"></i> 다음곡</button></div>
+          </section>
+
+          <section class="ks-mic-card">
+            <div class="ks-panel-title"><strong><i class="fa-solid fa-sliders"></i> 마이크 이펙트</strong><span class="ks-mic-howl-dot" id="ks-mic-howl-dot" title="하울링 감지 표시등" hidden></span></div>
+            <div class="ks-mic-warn"><i class="fa-solid fa-triangle-exclamation"></i> 스피커 환경에서는 마이크를 스피커와 멀리 두고, 작은 볼륨부터 천천히 올려보세요. 하울링이 감지되면 자동으로 잠깐 소리를 낮춥니다.</div>
+            <div class="ks-mic-body">
+              <button type="button" id="ks-mic-toggle" class="ks-btn ks-mic-toggle-btn"><i class="fa-solid fa-microphone"></i> 마이크 켜기</button>
+              <div class="ks-mic-sliders" id="ks-mic-sliders" hidden>
+                <label>에코 양<input type="range" id="ks-mic-echo" min="0" max="35" value="15"><span id="ks-mic-echo-val">15%</span></label>
+                <label>에코 지연<input type="range" id="ks-mic-delay" min="80" max="400" value="180"><span id="ks-mic-delay-val">180ms</span></label>
+                <label>마이크 볼륨<input type="range" id="ks-mic-volume" min="0" max="100" value="80"><span id="ks-mic-volume-val">80%</span></label>
+              </div>
+              <div class="ks-mic-record-row" id="ks-mic-record-row" hidden>
+                <button type="button" id="ks-mic-record"><i class="fa-solid fa-circle"></i> 내 목소리 녹음</button>
+                <div id="ks-mic-record-result" class="ks-mic-record-result" hidden></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ks-queue-card">
+            <div class="ks-panel-title"><strong><i class="fa-solid fa-list-ol"></i> 예약 대기열 <em id="ks-queue-count">0</em></strong><div><button id="ks-next" type="button" title="다음곡"><i class="fa-solid fa-forward"></i></button><button id="ks-clear" type="button" title="대기열 삭제"><i class="fa-solid fa-trash"></i></button></div></div>
+            <div class="ks-rotation-note"><i class="fa-solid fa-shuffle"></i> 예약자별 Fair Rotation 적용 중 <b id="ks-my-queue">예약자 이름을 입력하세요</b></div>
+            <div id="ks-current" class="ks-current">현재 재생 없음</div>
+            <div id="ks-queue" class="ks-queue"></div>
+          </section>
+
+          <section class="ks-history-card"><div class="ks-panel-title"><strong><i class="fa-solid fa-clock-rotate-left"></i> 최근 재생</strong><button id="ks-history-more" type="button">더보기</button></div><div id="ks-history-mini" class="ks-history-mini"></div></section>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <div id="ks-tv-overlay" class="ks-tv-overlay" hidden>
+    <div class="ks-tv-head"><div><b>BOOKOASIS KARAOKE</b><span id="ks-tv-title">재생 준비 중</span></div><button id="ks-tv-close" type="button"><i class="fa-solid fa-compress"></i> TV 모드 종료</button></div>
+    <div class="ks-tv-stage"></div>
+    <div class="ks-tv-bottom"><div><b id="ks-tv-song">재생 중인 곡 없음</b><span id="ks-tv-requester"></span></div><div class="ks-tv-controls"><button id="ks-tv-pause" type="button"><i class="fa-solid fa-pause"></i></button><button id="ks-tv-next" type="button"><i class="fa-solid fa-forward-step"></i></button></div><div class="ks-tv-queue" id="ks-tv-queue"></div></div>
+  </div>
+</div>
