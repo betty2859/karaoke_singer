@@ -623,3 +623,16 @@ def history(limit=50):
             return [_row(r) for r in conn.execute('SELECT * FROM history ORDER BY finished_at DESC,id DESC LIMIT ?', (limit,)).fetchall()]
         finally:
             conn.close()
+
+
+def clear_history():
+    """모든 재생 기록을 삭제하고 삭제된 행 수를 반환합니다."""
+    init_db()
+    with _LOCK:
+        conn = _connect()
+        try:
+            cur = conn.execute('DELETE FROM history')
+            conn.commit()
+            return int(cur.rowcount or 0)
+        finally:
+            conn.close()

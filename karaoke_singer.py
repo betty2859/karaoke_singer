@@ -794,6 +794,13 @@ class KaraokeSingerMetadataProvider(BaseMetadataProvider):
     def _history_payload(self):
         return {'success': True, 'view': 'history', 'history': queue_store.history(int(self._arg('limit','50') or 50))}
 
+    def _history_clear(self):
+        try:
+            removed = queue_store.clear_history()
+            return {'success': True, 'view': 'history_clear', 'removed': removed, 'history': []}
+        except Exception as exc:
+            return {'success': False, 'view': 'history_clear', 'error': str(exc)}
+
     def _history_log_preview(self):
         raw = self._arg('song', '')
         requester = self._arg('requester', '')
@@ -957,6 +964,8 @@ class KaraokeSingerMetadataProvider(BaseMetadataProvider):
             return self._queue_action('state')
         if view == 'history':
             return self._history_payload()
+        if view == 'history_clear':
+            return self._history_clear()
         if view == 'history_log_preview':
             return self._history_log_preview()
         if view == 'popular':
