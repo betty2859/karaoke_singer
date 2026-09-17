@@ -414,7 +414,7 @@ class KaraokeSingerMetadataProvider(BaseMetadataProvider):
         "enabled": True,
         "provider": "github-raw",
         "raw_base_url": (
-            "https://raw.githubusercontent.com/tjeodjq/bookoasis/main/plugins/metadata/karaoke_singer"
+            "https://raw.githubusercontent.com/betty2859/karaoke_singer/main"
         ),
         "files": [
             "karaoke_singer.py",
