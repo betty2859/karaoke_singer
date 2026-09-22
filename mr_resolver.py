@@ -42,7 +42,23 @@ def _tokens(value):
     return [x for x in re.split(r'[^0-9a-z가-힣]+', raw) if len(x) >= 2]
 
 
-def _score_title(title, singer, candidate):
+_NON_MR_MARKERS = (
+    'live', '라이브', 'official video', 'music video', 'mv', 'shorts',
+    '직캠', '방송', 'cover', '커버',
+)
+
+
+def _candidate_is_allowed(title, channel=''):
+    """명백히 실황/뮤직비디오/커버인 후보만 제외한다.
+
+    가사 영상은 반주 검색 결과가 없을 때 재생 가능한 fallback이 될 수 있으므로
+    여기서 제거하지 않는다. 대신 _score_title에서 반주 후보보다 낮게 정렬한다.
+    """
+    text = ('%s %s' % (title or '', channel or '')).lower()
+    return not any(marker in text for marker in _NON_MR_MARKERS)
+
+
+def _score_title(title, singer, candidate, brand='', number=''):
     target = _norm('%s %s' % (title, singer))
     c = str(candidate or '').lower()
     cn = _norm(candidate)
@@ -56,13 +72,15 @@ def _score_title(title, singer, candidate):
         if token in c:
             score += 15
     positives = ('mr', 'inst', 'instrumental', 'karaoke', '반주', '노래방', '노래방반주', '가라오케', 'minus one')
-    negatives = ('live', '라이브', 'official video', 'music video', 'mv', 'lyrics', '가사', 'cover', '커버', 'shorts', '직캠', '방송')
+    negatives = ('live', '라이브', 'official video', 'music video', 'mv', 'lyrics', '가사', '해석', '발음', 'cover', '커버', 'shorts', '직캠', '방송')
     for p in positives:
         if p in c:
             score += 12
     for n in negatives:
         if n in c:
             score -= 18
+    if number and re.search(r'(?<!\d)%s(?!\d)' % re.escape(str(number)), c):
+        score += 45
     # 금영(KY) 우선, TJ는 차선 - 실사용 결과 TJ 공식 MR은 임베드 차단이 압도적으로 많고
     # 금영 쪽은 상대적으로 재생 가능한 경우가 많다는 게 여러 유사 프로젝트에서도 확인된
     # 경향이라, 같은 조건이면 금영 계열 채널/제목을 먼저 시도하도록 가중치를 다르게 준다.
@@ -78,7 +96,25 @@ def _score_title(title, singer, candidate):
 
 
 def _cache_key(song):
-    return str(song.get('id') or '%s:%s' % (song.get('brand') or '', song.get('no') or '')).strip()
+    # 예약 대기열의 id는 queue row id이고, MR 캐시는 catalog song_id 기준이어야 한다.
+    # queue row에는 song_id와 id가 함께 있으므로 song_id를 먼저 사용한다.
+    return str(song.get('song_id') or song.get('id') or '%s:%s' % (song.get('brand') or '', song.get('no') or '')).strip()
+
+
+def _cache_matches_song(song, cached):
+    """오래된 queue row id 캐시가 다른 곡에 재사용되지 않게 확인한다."""
+    target_title = _norm(song.get('title'))
+    cached_text = '%s %s' % (cached.get('title') or '', cached.get('channel') or '')
+    cached_norm = _norm(cached_text)
+    if not target_title or not cached_norm:
+        return True
+    if target_title in cached_norm or cached_norm in target_title:
+        return True
+    number = str(song.get('no') or '').strip()
+    if number and re.search(r'(?<!\d)%s(?!\d)' % re.escape(number), cached_text):
+        return True
+    tokens = _tokens('%s %s' % (song.get('title') or '', song.get('singer') or ''))
+    return not tokens or any(token in cached_norm for token in tokens)
 
 
 def _youtube_watch(video_id):
@@ -374,7 +410,9 @@ def _ytdlp_search(song, config):
             seen.add(vid)
             item_title = item['title']
             channel = item.get('channel') or ''
-            score = _score_title(title, singer, item_title + ' ' + channel)
+            if not _candidate_is_allowed(item_title, channel):
+                continue
+            score = _score_title(title, singer, item_title + ' ' + channel, brand=brand, number=number)
             all_items.append({
                 'id': vid,
                 'title': item_title,
@@ -441,6 +479,7 @@ def _api_search(song, config):
     title = str(song.get('title') or '').strip()
     singer = str(song.get('singer') or '').strip()
     brand = str(song.get('brand') or '').strip()
+    number = str(song.get('no') or '').strip()
     brand_label = '금영' if brand == 'kumyoung' else 'TJ' if brand == 'tj' else brand
     default_query = ' '.join(x for x in (title, singer, 'MR', 'karaoke') if x).strip()
     watch_search = 'https://www.youtube.com/results?search_query=' + urllib.parse.quote(default_query)
@@ -452,6 +491,7 @@ def _api_search(song, config):
         default_query,
         ' '.join(x for x in (title, singer, '금영', 'mr') if x),
         ' '.join(x for x in (singer, title, 'instrumental') if x),
+        ' '.join(x for x in (brand, number, title, singer, 'MR') if x),
         ' '.join(x for x in (title, brand_label, 'mr') if x),
         ' '.join(x for x in (title, singer, '반주') if x),
     ):
@@ -487,11 +527,13 @@ def _api_search(song, config):
             seen.add(vid)
             item_title = str(snippet.get('title') or '')
             channel = str(snippet.get('channelTitle') or '')
+            if not _candidate_is_allowed(item_title, channel):
+                continue
             videos.append({
                 'id': vid,
                 'title': item_title,
                 'channel': channel,
-                'score': _score_title(title, singer, item_title + ' ' + channel),
+                'score': _score_title(title, singer, item_title + ' ' + channel, brand=brand, number=number),
                 'thumbnail': (((snippet.get('thumbnails') or {}).get('medium') or (snippet.get('thumbnails') or {}).get('default') or {}).get('url') or ''),
                 'embed_url': _youtube_embed(vid),
                 'watch_url': _youtube_watch(vid),
@@ -576,14 +618,20 @@ def resolve(song, config, force=False):
 
     if not force:
         cached = queue_store.get_mr_cache(key)
-        if cached and cached.get('status') == 'ok' and cached.get('video_id') not in blocked:
+        if cached and cached.get('status') == 'ok' and cached.get('video_id') not in blocked and _candidate_is_allowed(cached.get('title'), cached.get('channel')) and _cache_matches_song(song, cached):
             # 캐시에 대체 후보(candidates)가 있다면 그 중 차단된 영상만 걸러서 함께 내려준다.
-            cand = [c for c in (cached.get('candidates') or []) if c.get('id') not in blocked]
+            cand = [c for c in (cached.get('candidates') or []) if c.get('id') not in blocked and _candidate_is_allowed(c.get('title'), c.get('channel'))]
             cached['candidates'] = cand
             trace.append({'step': 'cache', 'status': 'hit'})
             return cached, trace
         if cached and cached.get('video_id') in blocked:
             trace.append({'step': 'cache', 'status': 'stale-blocked', 'message': '캐시된 영상이 차단 목록에 있어 다시 검색합니다.'})
+            queue_store.clear_mr_cache(key)
+        elif cached and not _candidate_is_allowed(cached.get('title'), cached.get('channel')):
+            trace.append({'step': 'cache', 'status': 'stale-filtered', 'message': '비MR 캐시를 폐기하고 다시 검색합니다.'})
+            queue_store.clear_mr_cache(key)
+        elif cached and not _cache_matches_song(song, cached):
+            trace.append({'step': 'cache', 'status': 'stale-mismatch', 'message': '다른 곡에 연결된 오래된 캐시를 폐기하고 다시 검색합니다.'})
             queue_store.clear_mr_cache(key)
         else:
             trace.append({'step': 'cache', 'status': 'miss'})
