@@ -280,7 +280,7 @@ def _execute_sync(brand, db_type='general', force_full=False):
             error='',
         )
     except Exception as exc:
-        _apply_sync_state(running=False, error=str(exc), message='동기화 실패')
+        _apply_sync_state(running=False, error=str(exc), message='동기화 실패: %s' % exc)
 
 
 # --- 매일 1회 자동 동기화 -----------------------------------------------------

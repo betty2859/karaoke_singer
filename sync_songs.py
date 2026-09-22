@@ -46,9 +46,11 @@ def _http_get_json(url):
         },
     )
     last_error = None
+    response_status = 0
     for attempt in range(HTTP_RETRIES):
         try:
             with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+                response_status = int(getattr(resp, 'status', 200) or 200)
                 raw = resp.read().decode('utf-8', errors='replace')
             break
         except urllib.error.HTTPError as exc:
@@ -60,6 +62,8 @@ def _http_get_json(url):
             raise RuntimeError('karaoke API 연결 실패: %s' % exc.reason) from exc
     else:
         raise last_error or RuntimeError('karaoke API 요청 실패')
+    if raw.lstrip().startswith('<'):
+        raise RuntimeError('karaoke API가 JSON 대신 HTML을 반환했습니다 (HTTP %s)' % (response_status or '응답'))
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:

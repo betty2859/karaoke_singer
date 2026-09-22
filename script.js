@@ -1,25 +1,54 @@
 (function () {
   const $=(s)=>container.querySelector(s);
   const statusEl=$('#ks-status'), errorEl=$('#ks-error'), emptyEl=$('#ks-empty'), listEl=$('#ks-list'), paginationEl=$('#ks-pagination'), searchEl=$('#ks-search'), requesterEl=$('#ks-requester'), subtagsEl=$('#ks-subtags'), countsEl=$('#ks-counts'), pageInfoEl=$('#ks-page-info'), queueEl=$('#ks-queue'), currentEl=$('#ks-current'), nowTitle=$('#ks-now-title'), nowMeta=$('#ks-now-meta'), nowThumb=$('#ks-now-thumb'), progressEl=$('#ks-progress'), nowTime=$('#ks-now-time'), ytWrap=$('#ks-yt-wrap');
+  const requesterModal=$('#ks-requester-modal'), requesterModalInput=$('#ks-requester-modal-input'), requesterModalSave=$('#ks-requester-modal-save'), requesterModalLater=$('#ks-requester-modal-later');
   const KOREAN_LABELS={'ㄱ':'가','ㄴ':'나','ㄷ':'다','ㄹ':'라','ㅁ':'마','ㅂ':'바','ㅅ':'사','ㅇ':'아','ㅈ':'자','ㅊ':'차','ㅋ':'카','ㅌ':'타','ㅍ':'파','ㅎ':'하'};
   const FAV_KEY='ks-favorites';
   function loadFavorites(){try{return new Set(JSON.parse(localStorage.getItem(FAV_KEY)||'[]'))}catch(_){return new Set()}}
   function saveFavorites(){localStorage.setItem(FAV_KEY,JSON.stringify([...state.favorites]))}
   function songKey(song){return (song.brand||'')+':'+(song.no||'')}
   function toggleFavorite(song){const key=songKey(song);if(state.favorites.has(key))state.favorites.delete(key);else state.favorites.add(key);saveFavorites();renderSongs()}
-  const state={brand:'all',category:'all',letter:'all',page:1,pageSize:30,total:0,pages:1,songs:[],keys:{},videos:[],videoIndex:0,videoAttemptToken:0,mrCandidates:[],mrResult:null,mediaMode:'youtube',mediaElement:null,player:null,current:null,startedId:null,tvOpen:false,ytReady:false,lastDuration:0,lastSeconds:0,pollBusy:false,reserving:false,playToken:0,previewMode:false,favoritesOnly:false,favorites:loadFavorites(),speed:1,mode:'list',tjChartType:'TOP',kyChartPeriod:''};
+  const state={brand:'all',category:'all',letter:'all',page:1,pageSize:30,total:0,pages:1,songs:[],keys:{},videos:[],videoIndex:0,videoAttemptToken:0,mrCandidates:[],mrResult:null,mediaMode:'youtube',mediaElement:null,player:null,current:null,startedId:null,tvOpen:false,ytReady:false,lastDuration:0,lastSeconds:0,reserving:false,playToken:0,previewMode:false,favoritesOnly:false,favorites:loadFavorites(),speed:1,mode:'list',tjChartType:'TOP',kyChartPeriod:'',chartLoadedKey:'',chartLoadingKey:'',chartRequestId:0};
   state.waitingCount=0;state.stoppingCurrent=false;state.historyRevision=0;
   function showError(t){errorEl.hidden=!t;errorEl.textContent=t||''}
+  let requesterModalResolve=null;
+  function finishRequesterModal(value){
+    if(requesterModal)requesterModal.hidden=true;
+    const resolve=requesterModalResolve;requesterModalResolve=null;
+    if(resolve)resolve(String(value||'').trim());
+  }
+  function openRequesterModal(){
+    if(!requesterModal||!requesterModalInput)return Promise.resolve('');
+    requesterModalInput.value=(requesterEl.value||localStorage.getItem('ks-requester')||'').trim();
+    requesterModal.hidden=false;
+    setTimeout(()=>requesterModalInput.focus(),0);
+    return new Promise(resolve=>{requesterModalResolve=resolve});
+  }
   function apiUrl(params){return '/api/media/dashboard/widgets/'+encodeURIComponent(pluginId)+'/data?'+new URLSearchParams(Object.assign({type:'general',limit:String(state.pageSize),_ts:String(Date.now())},params||{})).toString()}
-  async function api(params){try{const r=await fetch(apiUrl(params),{cache:'no-store',credentials:'same-origin'});const d=await r.json();if(!r.ok)d.success=false;return d}catch(e){return {success:false,error:e.message||'서버 연결 실패'}}}
-  function pill(t,ok){if(statusEl){statusEl.textContent=t||'';statusEl.classList.toggle('is-ok',ok===true);statusEl.classList.toggle('is-bad',ok===false)}}
+  async function api(params){
+    try{
+      const r=await fetch(apiUrl(params),{cache:'no-store',credentials:'same-origin',headers:{Accept:'application/json'}});
+      const text=await r.text();
+      const finalUrl=String(r.url||'');
+      if(r.status===502||r.status===504)return {success:false,error:'BookOasis 서버 또는 앞단 프록시가 응답을 받지 못했습니다. HTTP '+r.status+' — 잠시 후 다시 시도해주세요.'};
+      if(r.redirected&&/\/login(?:[/?#]|$)|signin/i.test(finalUrl))return {success:false,error:'로그인 세션이 만료되었습니다. 페이지를 새로고침한 뒤 다시 로그인해주세요.'};
+      let d;
+      try{d=JSON.parse(text)}catch(_){
+        const looksHtml=/^\s*</.test(text);
+        return {success:false,error:looksHtml?'서버가 JSON 대신 HTML을 반환했습니다. HTTP '+r.status:'서버 응답을 해석하지 못했습니다. HTTP '+r.status};
+      }
+      if(!r.ok)d.success=false;
+      return d;
+    }catch(e){return {success:false,error:e.message||'서버 연결 실패'}}
+  }
+  function pill(t,ok){if(/^MR .+ 선택$/.test(String(t||'')))t='';if(statusEl){statusEl.textContent=t||'';statusEl.classList.toggle('is-ok',ok===true);statusEl.classList.toggle('is-bad',ok===false)}}
   function esc(v){const d=document.createElement('div');d.textContent=v==null?'':String(v);return d.innerHTML}
   function letterLabel(c,k){return c==='korean'?(KOREAN_LABELS[k]||k):c==='special'?'기타':k}
   function renderSubtags(){if(state.category==='all'){subtagsEl.hidden=true;subtagsEl.innerHTML='';return}const keys=state.keys[state.category]||[];subtagsEl.innerHTML='';keys.forEach(k=>{const b=document.createElement('button');b.className='ks-tag'+(state.letter===k?' is-active':'');b.textContent=letterLabel(state.category,k);b.onclick=()=>{stopPreviewIfActive();state.letter=state.letter===k?'all':k;state.page=1;refresh()};subtagsEl.appendChild(b)});subtagsEl.hidden=!keys.length}
   function renderSongs(){listEl.innerHTML='';const isOfficialChart=state.mode==='tjchart'||state.mode==='kychart';(state.songs||[]).forEach(song=>{const row=document.createElement('article');row.className='ks-row';const badgeText=isOfficialChart&&song.rank?(song.rank+'위'):(song.brand_label||song.brand||'').toUpperCase();const favKey=songKey(song);const isFav=state.favorites.has(favKey);const metaLine=isOfficialChart?esc(song.singer||''):(song._meta?(esc(song.singer||'')+(song.singer?' · ':'')+esc(song._meta)):esc(song.singer||''));row.innerHTML='<div class="ks-song-no"><span class="ks-brand-mini '+(song.brand==='tj'?'tj':'ky')+'">'+esc(badgeText)+'</span><b>'+esc(song.no||'')+'</b></div><div class="ks-song-main"><h3><button class="ks-song-fav'+(isFav?' is-active':'')+'" title="즐겨찾기"><i class="fa-solid fa-star"></i></button>'+esc(song.title||'제목 없음')+'</h3><p>'+metaLine+'</p></div><div class="ks-row-actions"><button class="ks-btn ks-reserve"><i class="fa-solid fa-music"></i> 예약</button><button class="ks-btn ks-btn-ghost ks-mr"><i class="fa-brands fa-youtube"></i> MR</button><button class="ks-icon-btn ks-mr-pin" title="이 곡에 사용할 유튜브 URL 직접 지정"><i class="fa-solid fa-link"></i></button></div>';row.querySelector('.ks-reserve').onclick=()=>reserve(song);row.querySelector('.ks-mr').onclick=()=>playMr(song);row.querySelector('.ks-mr-pin').onclick=()=>pinManualMr(song);row.querySelector('.ks-song-fav').onclick=()=>toggleFavorite(song);listEl.appendChild(row)});emptyEl.hidden=state.total!==0}
   function renderPagination(){paginationEl.innerHTML='';if(state.pages<=1)return;const make=(text,page,active=false,disabled=false)=>{const b=document.createElement('button');b.className='ks-page'+(active?' is-active':'');b.textContent=text;b.disabled=disabled;b.onclick=()=>{if(!disabled){stopPreviewIfActive();state.page=page;refresh()}};return b};paginationEl.appendChild(make('‹',Math.max(1,state.page-1),false,state.page===1));let start=Math.max(1,state.page-3),end=Math.min(state.pages,start+6);start=Math.max(1,end-6);if(start>1){paginationEl.appendChild(make('1',1));if(start>2){const s=document.createElement('span');s.textContent='…';paginationEl.appendChild(s)}}for(let i=start;i<=end;i++)paginationEl.appendChild(make(String(i),i,i===state.page));if(end<state.pages){if(end<state.pages-1){const s=document.createElement('span');s.textContent='…';paginationEl.appendChild(s)}paginationEl.appendChild(make(String(state.pages),state.pages))}paginationEl.appendChild(make('›',Math.min(state.pages,state.page+1),false,state.page===state.pages))}
-  function renderCounts(d){const c=d.counts||{};$('#ks-count-main').textContent=Number(c.all||0).toLocaleString();countsEl.textContent='전체 '+Number(c.all||0).toLocaleString()+' · TJ '+Number(c.tj||0).toLocaleString()+' · 금영 '+Number(c.kumyoung||0).toLocaleString();pill(Number(c.all||0).toLocaleString()+'곡',true);pageInfoEl.textContent=state.total?state.page+' / '+state.pages+' 페이지 · '+Number(state.total).toLocaleString()+'곡':''}
-  async function refresh(){state.mode='list';setListHead('fa-solid fa-music',state.favoritesOnly?'즐겨찾기':'노래 목록',state.favoritesOnly?'즐겨찾기한 곡만 표시 중입니다.':'예약 버튼을 누르면 대기열에 등록됩니다.',false);showError('');const params={view:'list',q:searchEl.value||'',brand:state.brand,category:state.category,letter:state.letter,offset:String((state.page-1)*state.pageSize),limit:String(state.pageSize)};if(state.favoritesOnly){params.favorites_only='1';params.favorites=[...state.favorites].join(',')}const d=await api(params);if(!d.success){showError(d.error||'목록을 불러오지 못했습니다.');return}state.keys=d.keys||{};state.total=d.total||0;
+  function renderCounts(d){const c=d.counts||{},countMain=$('#ks-count-main');if(countMain)countMain.textContent=Number(c.all||0).toLocaleString();countsEl.textContent='전체 '+Number(c.all||0).toLocaleString()+' · TJ '+Number(c.tj||0).toLocaleString()+' · 금영 '+Number(c.kumyoung||0).toLocaleString();pill('',true);pageInfoEl.textContent=state.total?state.page+' / '+state.pages+' 페이지':''}
+  async function refresh(){state.chartRequestId++;state.chartLoadedKey='';state.chartLoadingKey='';state.mode='list';setListHead('fa-solid fa-music',state.favoritesOnly?'즐겨찾기':'노래 목록',state.favoritesOnly?'즐겨찾기한 곡만 표시 중입니다.':'예약 버튼을 누르면 대기열에 등록됩니다.',false);showError('');const params={view:'list',q:searchEl.value||'',brand:state.brand,category:state.category,letter:state.letter,offset:String((state.page-1)*state.pageSize),limit:String(state.pageSize)};if(state.favoritesOnly){params.favorites_only='1';params.favorites=[...state.favorites].join(',')}const d=await api(params);if(!d.success){showError(d.error||'목록을 불러오지 못했습니다.');return}state.keys=d.keys||{};state.total=d.total||0;
     // 서버가 total은 맞게 주더라도 pages 값이 어긋나는 경우(예: 프레임워크/캐시 문제)에 대비해,
     // 페이지 수는 total과 pageSize로 클라이언트에서 다시 계산해 항상 정확하게 표시한다.
     state.pages=Math.max(1,Math.ceil(state.total/state.pageSize));
@@ -61,9 +90,9 @@
   function renderTvQueue(waiting){const el=$('#ks-tv-queue');if(!el)return;el.innerHTML=waiting.slice(0,5).map((x,i)=>'<span>'+(i+1)+' '+esc(x.title)+'</span>').join('')}
   async function loadQueue(){if(!isPluginViewActive())return;const d=await api({view:'queue'});if(isPluginViewActive()&&d.success)renderQueue(d)}
   async function reserve(song){showError('');if(state.reserving)return;const requester=(requesterEl.value||localStorage.getItem('ks-requester')||'').trim();if(!requester){showError('예약자 이름을 먼저 입력해주세요.');requesterEl.focus();return}state.reserving=true;try{localStorage.setItem('ks-requester',requester);const d=await api({view:'queue_add',song:JSON.stringify(song),requester});if(!d.success){showError(d.error||'예약에 실패했습니다.');return}pill(d.duplicate?'이미 예약된 곡입니다.':'예약 완료'+(d.autostarted?' · 재생 시작':''),!d.duplicate);renderQueue(d);if(d.current&&d.autostarted)await playQueued(d.current)}finally{state.reserving=false}}
-  async function removeQueue(id){const d=await api({view:'queue_remove',id:String(id)});if(!d.success)showError(d.error||'예약 취소 실패');else pill('예약을 취소했습니다.',true);renderQueue(d)}
+  async function removeQueue(id){const d=await api({view:'queue_remove',id:String(id)});if(!d.success){showError(d.error||'예약 취소 실패');await loadQueue();return}pill('예약을 취소했습니다.',true);renderQueue(d)}
   async function nextQueue(){const d=await api({view:'queue_next'});if(!d.success){showError(d.error||'다음곡으로 이동하지 못했습니다.');return}renderQueue(d);if(d.current){await playQueued(d.current)}else stopPlayer()}
-  async function clearQueue(){if(!confirm('대기 중인 예약곡을 모두 삭제할까요?'))return;const d=await api({view:'queue_clear'});renderQueue(d);pill('대기열을 비웠습니다.',true)}
+  async function clearQueue(){if(!confirm('대기 중인 예약곡을 모두 삭제할까요?'))return;const d=await api({view:'queue_clear'});if(!d.success){showError(d.error||'대기열 삭제에 실패했습니다.');await loadQueue();return}renderQueue(d);pill('대기열을 비웠습니다.',true)}
   function ensureYt(cb){if(window.YT&&window.YT.Player){state.ytReady=true;cb();return}const prev=window.onYouTubeIframeAPIReady;window.onYouTubeIframeAPIReady=()=>{if(typeof prev==='function')prev();state.ytReady=true;cb()};if(!document.querySelector('script[src*="youtube.com/iframe_api"]')){const tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag)}}
   function setNowThumbnail(video){if(video&&video.id){nowThumb.innerHTML='<img src="https://i.ytimg.com/vi/'+encodeURIComponent(video.id)+'/mqdefault.jpg" alt=""><div><i class="fa-solid fa-play"></i></div>'}else nowThumb.innerHTML='<div><i class="fa-solid fa-music"></i></div>'}
   function syncProgress(){const p=state.mediaElement||state.player;if(!p)return;try{let sec=0,dur=0;if(state.mediaMode==='youtube'&&p.getCurrentTime){sec=p.getCurrentTime()||0;dur=p.getDuration()||0}else if(p.currentTime!==undefined){sec=p.currentTime||0;dur=p.duration||0}state.lastSeconds=sec;state.lastDuration=dur;progressEl.style.width=(dur?Math.min(100,sec/dur*100):0)+'%';nowTime.textContent=formatTime(sec)+' / '+formatTime(dur)}catch(e){}}
@@ -139,7 +168,7 @@
   function playResolved(result,onEnd){if(!result)return;if(result.source==='local'){playLocal(result,onEnd);return}const candidates=result.candidates&&result.candidates.length?result.candidates:[{id:result.video_id,title:result.title,channel:result.channel,thumbnail:result.thumbnail,embed_url:result.embed_url,watch_url:result.watch_url}];state.videos=candidates;state.videoIndex=0;playVideoCandidates(candidates,0,onEnd)}
   async function cancelOrphanQueueEntry(){
     // 예약 대기열에서 재생 중이던 곡을 두고 다른 곡을 미리듣기(MR)하면, 백엔드에는 그 곡이
-    // 계속 "재생 중"으로 남아 2.5초 폴링이 그 곡을 자동으로 되살리는 버그가 있었다.
+    // 계속 "재생 중"으로 남을 수 있다.
     // MR 미리듣기를 시작하기 전에 현재 재생 곡만 정리하고(advance=0), 다음 대기곡까지
     // 연쇄로 자동 시작되지 않게 한다 - 대기열은 그대로 보존된다.
     if(state.current&&state.current.id){
@@ -148,12 +177,16 @@
   }
   async function logPreviewHistory(song){if(!song)return null;const d=await api({view:'history_log_preview',song:JSON.stringify(song)});if(d.success)await refreshHistoryMini();return d}
   async function playMr(song){state.playToken++;const token=state.playToken;await cancelOrphanQueueEntry();if(token!==state.playToken)return;state.previewMode=true;nowTitle.textContent=(song.title||'')+' MR';nowMeta.textContent='MR 탐색 준비…';const r=await resolveMr(song);if(token!==state.playToken||!r)return;state.current=null;updateNow({title:song.title,singer:song.singer,requester:''});await logPreviewHistory(song);if(token!==state.playToken)return;playResolved(r,()=>{stopPlayer()})}
+  function queueSongForMr(item){
+    // queue.id는 대기열 행 번호이고 catalog song_id가 실제 곡 식별자다.
+    return Object.assign({},item,{id:item.song_id||item.id});
+  }
   async function playQueued(item){
     if(!item)return;
     const token=++state.playToken;
     state.previewMode=false;state.resolving=true;state.current=item;
     updateNow(item);nowMeta.textContent='MR 탐색 중…';
-    let r=await resolveMr(item);
+    let r=await resolveMr(queueSongForMr(item));
     state.resolving=false;
     if(token!==state.playToken||!state.current||String(state.current.id)!==String(item.id))return;
     if(!r){
@@ -270,7 +303,8 @@
     return ({preview:'미리듣기',played:'예약 재생',skipped:'건너뜀',cancelled:'중단',error:'재생 오류'})[status]||'재생 기록'
   }
   function renderHistoryMiniRows(history){
-    $('#ks-history-mini').innerHTML=(history||[]).slice(0,4).map(x=>{
+    const visibleHistory=(history||[]).slice(0,4);
+    $('#ks-history-mini').innerHTML=visibleHistory.map(x=>{
       const label=historyStatusLabel(x.status);
       const badge=label==='예약 재생'?'':' <span class="ks-preview-tag">'+esc(label)+'</span>';
       return '<div><b>'+esc(x.title)+badge+'</b><small>'+esc(x.singer||'')+'</small></div>'
@@ -332,12 +366,17 @@
     $('#ks-history-clear').hidden=state.mode!=='history';
     $('#ks-tjchart-top').hidden=true;$('#ks-tjchart-hot').hidden=true;
     $('#ks-kychart-d').hidden=true;$('#ks-kychart-w').hidden=true;$('#ks-kychart-m').hidden=true;$('#ks-kychart-y').hidden=true;
+    const showManagement=state.mode==='list'&&!state.favoritesOnly;
+    ['ks-sync-tj','ks-sync-ky','ks-sync-stop','ks-add-song','ks-export-seed'].forEach(id=>{const el=$('#'+id);if(el)el.hidden=!showManagement});
+    const fullSync=$('#ks-sync-full');
+    if(fullSync){const label=fullSync.closest('label');if(label)label.hidden=!showManagement}
     updateNavActive();
   }
   function backToCatalog(){state.mode='list';state.favoritesOnly=false;state.page=1;refresh();window.scrollTo({top:0,behavior:'smooth'})}
   async function setFavoritesOnly(on){state.mode='list';state.favoritesOnly=on;state.page=1;await refresh()}
   async function showPopularInline(){
     stopPreviewIfActive();
+    state.chartRequestId++;state.chartLoadedKey='';state.chartLoadingKey='';
     state.mode='popular';
     paginationEl.innerHTML='';
     setListHead('fa-solid fa-fire','인기차트','재생 기록을 집계해 많이 재생된 순으로 보여줍니다.',true);
@@ -348,6 +387,7 @@
   }
   async function showHistoryInline(){
     stopPreviewIfActive();
+    state.chartRequestId++;state.chartLoadedKey='';state.chartLoadingKey='';
     state.mode='history';
     paginationEl.innerHTML='';
     setListHead('fa-solid fa-clock-rotate-left','재생 기록','최근 재생한 곡입니다. 각 기록을 눌러 다시 예약할 수 있습니다.',true);
@@ -360,8 +400,11 @@
   }
   async function showTjChartInline(chartType){
     stopPreviewIfActive();
-    state.mode='tjchart';
-    state.tjChartType=chartType||'TOP';
+    const selectedType=chartType||'TOP',key='tj:'+selectedType;
+    if(state.mode==='tjchart'&&(state.chartLoadedKey===key||state.chartLoadingKey===key))return;
+    const requestId=++state.chartRequestId;
+    state.chartLoadingKey=key;state.chartLoadedKey='';state.mode='tjchart';
+    state.tjChartType=selectedType;
     paginationEl.innerHTML='';
     setListHead('fa-solid fa-ranking-star',state.tjChartType==='HOT'?'TJ HOT100':'TJ TOP100','TJ미디어 공식 차트입니다(tjmedia.com). 카탈로그에 없는 곡도 MR은 재생해볼 수 있습니다.',true);
     $('#ks-tjchart-top').hidden=false;$('#ks-tjchart-hot').hidden=false;
@@ -369,17 +412,21 @@
     $('#ks-tjchart-hot').classList.toggle('is-active',state.tjChartType==='HOT');
     listEl.innerHTML='<div class="ks-muted" style="padding:20px">불러오는 중…</div>';
     const d=await api({view:'tj_chart',chart_type:state.tjChartType});
-    if(state.mode!=='tjchart')return; // 로딩 중 다른 화면으로 이동했으면 무시
+    if(requestId!==state.chartRequestId||state.mode!=='tjchart')return; // 로딩 중 다른 화면으로 이동했으면 무시
+    state.chartLoadingKey='';
     if(!d.success){listEl.innerHTML='';emptyEl.hidden=false;showError(d.error||'TJ 차트를 가져오지 못했습니다.');state.songs=[];state.total=0;return}
     showError('');
-    state.songs=d.songs||[];state.total=state.songs.length;
+    state.songs=d.songs||[];state.total=state.songs.length;state.chartLoadedKey=key;
     renderSongs();
   }
   const KY_PERIOD_LABEL={'':'일간','w':'주간','m':'월간','y':'연간'};
   async function showKyChartInline(period){
     stopPreviewIfActive();
-    state.mode='kychart';
-    state.kyChartPeriod=(period===undefined||period===null)?'':period;
+    const selectedPeriod=(period===undefined||period===null)?'':period,key='ky:'+selectedPeriod;
+    if(state.mode==='kychart'&&(state.chartLoadedKey===key||state.chartLoadingKey===key))return;
+    const requestId=++state.chartRequestId;
+    state.chartLoadingKey=key;state.chartLoadedKey='';state.mode='kychart';
+    state.kyChartPeriod=selectedPeriod;
     paginationEl.innerHTML='';
     setListHead('fa-solid fa-ranking-star','금영 '+KY_PERIOD_LABEL[state.kyChartPeriod]+' 인기차트','금영(KYSing) 공식 차트입니다(kysing.kr). 카탈로그에 없는 곡도 MR은 재생해볼 수 있습니다.',true);
     const btnMap={'':'#ks-kychart-d','w':'#ks-kychart-w','m':'#ks-kychart-m','y':'#ks-kychart-y'};
@@ -387,12 +434,15 @@
     $(btnMap[state.kyChartPeriod]).classList.add('is-active');
     listEl.innerHTML='<div class="ks-muted" style="padding:20px">불러오는 중…</div>';
     const d=await api({view:'ky_chart',period:state.kyChartPeriod});
-    if(state.mode!=='kychart')return;
+    if(requestId!==state.chartRequestId||state.mode!=='kychart')return;
+    state.chartLoadingKey='';
     if(!d.success){listEl.innerHTML='';emptyEl.hidden=false;showError(d.error||'금영 차트를 가져오지 못했습니다.');state.songs=[];state.total=0;return}
     showError('');
-    state.songs=d.songs||[];state.total=state.songs.length;
+    state.songs=d.songs||[];state.total=state.songs.length;state.chartLoadedKey=key;
     renderSongs();
   }
+  function scrollHost(el){let node=el&&el.parentElement;while(node&&node!==document.body){const cs=getComputedStyle(node);if((cs.overflowY==='auto'||cs.overflowY==='scroll')&&node.scrollHeight>node.clientHeight)return node;node=node.parentElement}return document.scrollingElement||document.documentElement}
+  function keepScrollWhile(task){const host=scrollHost(container),top=host.scrollTop,left=host.scrollLeft,restore=()=>{host.scrollTop=top;host.scrollLeft=left};const result=task();if(result&&typeof result.finally==='function')return result.finally(()=>requestAnimationFrame(restore));restore();return result}
   function navFocus(which){
     if(which==='queue')document.querySelector('.ks-queue-card')?.scrollIntoView({behavior:'smooth',block:'start'});
     else if(which==='current')document.querySelector('.ks-now-card')?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -400,18 +450,29 @@
     else if(which==='popular')showPopularInline();
     else if(which==='tjchart')showTjChartInline(state.tjChartType||'TOP');
     else if(which==='kychart')showKyChartInline(state.kyChartPeriod||'');
-    else if(which==='favorites')setFavoritesOnly(!state.favoritesOnly);
+    else if(which==='favorites')keepScrollWhile(()=>setFavoritesOnly(!state.favoritesOnly));
     else if(which==='home')backToCatalog();
-    else if(which==='search'){if(state.mode!=='list')backToCatalog();searchEl.focus();window.scrollTo({top:0,behavior:'smooth'})}
+    else if(which==='search'){if(state.mode!=='list'||state.favoritesOnly)backToCatalog();searchEl.focus();window.scrollTo({top:0,behavior:'smooth'})}
   }
   // 이벤트
   container.querySelectorAll('.ks-cat').forEach(b=>b.onclick=()=>{stopPreviewIfActive();container.querySelectorAll('.ks-cat').forEach(x=>x.classList.remove('is-active'));b.classList.add('is-active');state.brand=b.dataset.brand;state.page=1;refresh()});
   container.querySelectorAll('.ks-letter').forEach(b=>b.onclick=()=>{stopPreviewIfActive();container.querySelectorAll('.ks-letter').forEach(x=>x.classList.remove('is-active'));b.classList.add('is-active');state.category=b.dataset.category;state.letter='all';state.page=1;refresh()});
-  container.querySelectorAll('.ks-nav-item').forEach(b=>b.onclick=()=>{stopPreviewIfActive();navFocus(b.dataset.nav)});
+  container.querySelectorAll('.ks-nav-item').forEach(b=>{if(b.dataset.nav==='favorites')b.onmousedown=e=>e.preventDefault();b.onclick=()=>{stopPreviewIfActive();navFocus(b.dataset.nav)}});
   $('#ks-save-requester').onclick=()=>{const v=(requesterEl.value||'').trim();if(v)localStorage.setItem('ks-requester',v);pill(v?'예약자 '+v+' 저장':'예약자 이름을 입력하세요',!!v)};
   requesterEl.value=localStorage.getItem('ks-requester')||'';
+  if(requesterModalSave)requesterModalSave.onclick=()=>{const v=(requesterModalInput.value||'').trim();if(!v){requesterModalInput.focus();return}requesterEl.value=v;localStorage.setItem('ks-requester',v);pill('예약자 '+v+' 저장',true);finishRequesterModal(v)};
+  if(requesterModalLater)requesterModalLater.onclick=()=>finishRequesterModal('');
+  if(requesterModal)requesterModal.onclick=e=>{if(e.target===requesterModal)finishRequesterModal('')};
+  if(requesterModalInput)requesterModalInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();requesterModalSave?.click()}else if(e.key==='Escape')finishRequesterModal('')};
+  const syncFullEl=$('#ks-sync-full');if(syncFullEl){syncFullEl.checked=localStorage.getItem('ks-sync-full')==='1';syncFullEl.onchange=()=>localStorage.setItem('ks-sync-full',syncFullEl.checked?'1':'0')}
+  if(!requesterEl.value.trim())setTimeout(()=>openRequesterModal(),180);
   requesterEl.addEventListener('input',()=>{const v=requesterEl.value.trim();const mineEl=$('#ks-my-queue');if(mineEl)mineEl.textContent=v?'예약 확인 중…':'예약자 이름을 입력하세요'});
   let timer;searchEl.oninput=()=>{stopPreviewIfActive();clearTimeout(timer);timer=setTimeout(()=>{state.page=1;refresh()},250)};searchEl.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();stopPreviewIfActive();state.page=1;refresh()}};
+  function resetSearchScope(){if(state.mode!=='list'||state.favoritesOnly){state.mode='list';state.favoritesOnly=false;state.page=1;return true}return false}
+  searchEl.addEventListener('input',resetSearchScope);
+  searchEl.addEventListener('keydown',resetSearchScope,true);
+  const searchNav=container.querySelector('.ks-nav-item[data-nav="search"]');if(searchNav)searchNav.addEventListener('click',()=>{if(resetSearchScope())refresh()},true);
+  container.addEventListener('click',e=>{if(e.target.closest('#ks-search-btn'))resetSearchScope()},true);
   // 이벤트 위임 방식으로 바인딩해 검색 버튼이 어떤 이유로든(재렌더링 등) 누락되지 않도록 한다.
   container.addEventListener('click',e=>{const btn=e.target.closest('#ks-search-btn');if(btn){e.preventDefault();stopPreviewIfActive();clearTimeout(timer);state.page=1;refresh()}});
   $('#ks-next').onclick=finishCurrent;$('#ks-player-next').onclick=finishCurrent;$('#ks-tv-next').onclick=finishCurrent;$('#ks-clear').onclick=clearQueue;$('#ks-player-pause').onclick=togglePause;$('#ks-tv-pause').onclick=togglePause;$('#ks-history-clear').onclick=clearHistory;$('#ks-player-mode').onclick=openTv;$('#ks-now-tv').onclick=openTv;$('#ks-tv-close').onclick=closeTv;$('#ks-history-more').onclick=showHistoryInline;
@@ -553,9 +614,9 @@
   $('#ks-sync-tj').onclick=async()=>{const full=$('#ks-sync-full').checked;const d=await api({view:'sync_start',brand:'tj',full:full?'1':'0'});pill(d.success?(full?'TJ 전체 동기화 시작':'TJ 동기화 시작'):(d.error||'동기화 실패'),d.success);pollSync()};$('#ks-sync-ky').onclick=async()=>{const full=$('#ks-sync-full').checked;const d=await api({view:'sync_start',brand:'kumyoung',full:full?'1':'0'});pill(d.success?(full?'금영 전체 동기화 시작':'금영 동기화 시작'):(d.error||'동기화 실패'),d.success);pollSync()};$('#ks-sync-stop').onclick=async()=>{const d=await api({view:'sync_stop'});pill('동기화 중지 요청',d.success)};
   $('#ks-export-seed').onclick=async()=>{pill('시드 내보내는 중…',true);const d=await api({view:'export_seed'});pill(d.success?('시드 저장 완료 · '+Number(d.count||0).toLocaleString()+'곡'):(d.error||'시드 내보내기 실패'),d.success)};
   $('#ks-add-song').onclick=addCustomSong;
-  async function pollSync(){const d=await api({view:'sync_status'});if(d.sync&&d.sync.running){pill(d.sync.message||'동기화 중…',true);setTimeout(pollSync,1200)}else refresh()}
+  async function pollSync(){const d=await api({view:'sync_status'});if(!d.success&&!d.sync){showError(d.error||'동기화 상태를 확인하지 못했습니다.');pill('동기화 상태 확인 실패',false);return}if(d.sync&&d.sync.running){pill(d.sync.message||'동기화 중…',true);setTimeout(pollSync,1200)}else if(d.sync&&d.sync.error){await refresh();showError('동기화 실패: '+d.sync.error);pill('동기화 실패',false)}else{await refresh();if(d.sync&&d.sync.message)pill(d.sync.message,true)}}
   let pluginViewActive=!!(container&&container.isConnected&&container.style.display!=='none');
-  let queuePollTimer=null,progressTimer=null,pluginViewObserver=null;
+  let progressTimer=null,pluginViewObserver=null;
   function isPluginViewActive(){return pluginViewActive&&!!container&&container.isConnected&&container.style.display!=='none'}
   function onLibraryCategorySelected(event){
     const selectedId=String(event&&event.detail&&event.detail.id||'');
@@ -565,11 +626,9 @@
     if(!pluginViewActive)return;
     pluginViewActive=false;
     window.removeEventListener('library:category-selected',onLibraryCategorySelected);
-    if(queuePollTimer!==null)clearInterval(queuePollTimer);
     if(progressTimer!==null)clearInterval(progressTimer);
     if(pluginViewObserver)pluginViewObserver.disconnect();
     // 현재 예약은 백엔드에 남겨 재진입 시 사용자가 직접 이어 재생할 수 있게 한다.
-    // 화면을 벗어난 뒤 폴링이 이 항목을 다시 자동 재생하지 않도록 위에서 타이머도 정리한다.
     stopPlayer();
   }
   window.addEventListener('library:category-selected',onLibraryCategorySelected);
@@ -579,22 +638,6 @@
     });
     pluginViewObserver.observe(container,{attributes:true,attributeFilter:['style']});
   }
-  queuePollTimer=setInterval(async()=>{
-    if(!isPluginViewActive()||state.pollBusy||state.stoppingCurrent)return;
-    state.pollBusy=true;
-    try{
-      const d=await api({view:'queue'});
-      if(!isPluginViewActive()||state.stoppingCurrent)return;
-      if(d.success){
-        if(state.previewMode)return;
-        const remote=d.current;
-        if(remote&&(!state.current||String(remote.id)!==String(state.current.id))){
-          renderQueue(d);
-          if(remote.status==='playing')playQueued(remote);
-        }else renderQueue(d);
-      }
-    }finally{state.pollBusy=false}
-  },2500);
   progressTimer=setInterval(()=>{if(isPluginViewActive())syncProgress()},1000);
 
   loadQueue();refresh();refreshHistoryMini();
